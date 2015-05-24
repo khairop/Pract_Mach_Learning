@@ -1,0 +1,90 @@
+
+# Practical Machine Learning Peer Assessment 
+## Summary
+This analysis has been done to predict the manner in which persons performed weight lifting exercises. The data is collected from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The outcome variable has five classes and the total number of predictors are 159
+
+
+## Loading various libraries, and preparing the data (using subdirectory data)
+```{r}
+library(caret)
+library(randomForest)
+
+training <- read.csv("./data/pml-training.csv",row.names=1,na.strings = "")
+testing <- read.csv("./data/pml-testing.csv",row.names=1,na.strings = "NA")
+```
+
+## Preprocessing data
+
+We need to exclude  the variables that have almost to zero variance in both training and testing data. Then exclude the columns with missing values to avoid problems in training models. 
+
+```{r}
+# remove near zero covariates using caret package, 75 variables remaining in both sets (from 159)
+nsv = nearZeroVar(training,saveMetrics=TRUE)
+training = training[,!nsv$nzv]
+testing = testing[,!nsv$nzv]
+
+# Remove variables with missing values, 58 variables reamining in training set
+training_na = training[,(colSums(is.na(training)) == 0)]
+testing_na = testing[,(colSums(is.na(testing)) == 0)]
+
+# Remove unnecessary columns, (53 cariables remaining for training, 52 variables for testing)
+string_train = c("user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","num_window")
+string_test = c("user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","num_window","problem_id")
+training_col = training_na[,!(names(training_na) %in% string_train)]
+testing_col = testing_na[,!(names(testing_na) %in% string_test)]
+dim(training_col)
+dim(testing_col)
+```
+
+Now we split the preprocessed training data into training set and validation set.
+```{r}
+intrain = createDataPartition(y=training$classe, p=0.7, list=FALSE)
+training_clean = training_col[intrain,]
+validation_clean = training_col[-intrain,]
+```
+
+In the new training set and validation set we just created, there are 52 predictors and 1 response. We heck the correlations between the predictors and the outcome variable in the new training set. There doesn’t seem to be any predictors strongly correlated (all of them are close to 0) with the outcome variable, so linear regression model is not recommnded.  Random forest model may be more suitable for this data.
+
+```{r}
+cor = abs(sapply(colnames(training_clean[, -ncol(training)]), function(x) cor(as.numeric(training_clean[, x]), as.numeric(training_clean$classe), method = "spearman")))
+```
+
+## Random Forest Model
+
+We try to fit a random forest model and check the model performance on the validation set.
+```{r}
+set.seed(4321)
+# Fit rf model
+rffit = train(classe ~ ., method = "rf", data = training_clean, importance = T, trControl = trainControl(method = "cv", number = 4))
+validation_pred = predict(rffit, newdata=validation_clean)
+# Check model performance
+confusionMatrix(validation_pred,validation_clean$classe)
+
+#check important variables
+imp = varImp(rffit)$importance
+varImpPlot(rffit$finalModel, sort = TRUE, type = 1, pch = 19, col = 1, cex = 1, main = "Importance of the Predictors")
+```
+
+The random forest algorithm generates a model with accuracy 0.9922.  The top 4 most important variables are roll_bell, yaw_belt, pitch_forearm and pitch_belt. 
+
+
+## Prediction
+The last step is to use the random forest model to predict on the testing set without the outcome variable and save the prediction output.
+
+
+```{r}
+testing_pred <- predict(rfit, newdata=testing_col)
+write_files <- function(x) {
+        n <- length(x)
+        for (i in 1:n) {
+                filename <- paste0("problem_id", i, ".txt")
+                write.table(x[i], file=filename, quote=FALSE, row.names=FALSE,col.names=FALSE)
+        }
+}
+write_files(testing_pred)
+```
+
+
+## Results
+
+We used 52 variables to build the random forest model with 4-fold cross validation. 

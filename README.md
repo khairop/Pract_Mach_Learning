@@ -1,1 +1,1 @@
-### Reporducible Research -  Project 1 (by khairop)
+### Practical Machine Learning (by khairop)
